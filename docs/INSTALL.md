@@ -118,7 +118,9 @@ The window is organized by **device**: liquid cooler, graphics card, motherboard
 - **the pencil**, to rename the fan;
 - **the crossed-out eye**, to hide it if it is useless to you (an empty header, for example).
 
-At the top, the **Auto**, **20%** and **100%** buttons act on every visible fan at once. That's handy for a quiet PC in one click, or to check that everything spins. The **Auto** button also puts hidden fans back into automatic mode.
+At the top, the **Auto**, **20%**, **50%** and **100%** buttons act on every visible fan at once. That's handy for a quiet PC in one click, or to check that everything spins. The **Auto** button also puts hidden fans back into automatic mode.
+
+Next to them, the **+** button saves the current settings of all fans as a **profile** with a name of up to 10 characters (for example "Quiet" or "Gaming"). Each profile then gets its own button, to apply it in one click.
 
 When fans are hidden, a **👁** button appears at the top left, with their number. It shows them all again, after confirmation. Hiding a fan never changes its setting.
 

@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from fantastic import hwmon
+from fantastic import nvidia
 from fantastic.hardware import Hardware
 from fantastic.i18n import render
 
@@ -108,6 +109,18 @@ class HardwareTest(unittest.TestCase):
             self.assertEqual(len(hw.hints), 1)
             self.assertEqual(hw.hints[0]["command"], "sudo modprobe nct6775")
         self.assertEqual(self.hw.hints, [])
+
+    def test_nvidia_calibration(self):
+        low, start = 30, 43
+        raw = lambda p: nvidia.to_raw(p, low, start)
+        self.assertEqual((raw(0), raw(5), raw(100)), (30, 43, 100))
+        self.assertTrue(all(raw(p) <= raw(p + 1) for p in range(100)))
+        for p in range(101):  # 95 logical steps over 57 NVML steps: the round trip is within 1 point
+            self.assertLessEqual(abs(nvidia.to_logical(raw(p), low, start) - p), 1)
+        self.assertEqual(nvidia.to_logical(43, low, start), 5)
+        self.assertEqual(nvidia.to_logical(30, low, start), 0)
+        self.assertEqual(nvidia.to_raw(37, low, None), 37)  # no calibration: identity
+        self.assertEqual(nvidia.to_logical(37, low, None), 37)
 
     def test_interpolate(self):
         curve = [(20, 30), (30, 40), (50, 100)]

@@ -6,7 +6,7 @@ import tempfile
 import threading
 import unittest
 
-from fantastic import i18n
+from fantastic import daemon, i18n
 from fantastic.client import Client, DaemonError
 from fantastic.daemon import DEFAULT_CONFIG, FanService, ServiceError, make_server
 from fantastic.hardware import Hardware
@@ -95,6 +95,37 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(self.nct("pwm1"), "102")  # the hidden fan's setting is unchanged
         self.service.auto_all()
         self.assertEqual(self.nct("pwm1_enable"), "5")
+
+    def test_profiles(self):
+        self.service.set_speed(NCT_PWM1, 40)
+        self.service.save_profile("Quiet")
+        self.service.set_speed(NCT_PWM1, 100)
+        self.service.set_auto(KRAKEN_PUMP)
+        self.service.set_speed("nct6798@nct6775.656/pwm2", 70)
+        self.assertEqual(self.service.apply_profile("Quiet"), {})
+        # fan 1 back to 40%, fan 2 and the pump back to what they were when saved (automatic)
+        self.assertEqual((self.nct("pwm1"), self.nct("pwm1_enable")), ("102", "1"))
+        self.assertEqual(self.nct("pwm2_enable"), "5")
+        self.assertEqual(self.service.targets, {NCT_PWM1: 40})
+        self.assertEqual(self.service.status()["profiles"], ["Quiet"])
+        self.assertEqual(self._new_service().profiles["Quiet"][NCT_PWM1], 40)  # persisted
+        self.service.delete_profile("Quiet")
+        self.assertEqual(self.service.profiles, {})
+
+    def test_profile_validation(self):
+        for bad in ("", "   ", "x" * 11, None, 5):
+            with self.assertRaises(ServiceError):
+                self.service.save_profile(bad)
+        self.service.save_profile("1234567890")  # exactly 10 characters is fine
+        with self.assertRaises(ServiceError):
+            self.service.apply_profile("nope")
+        with self.assertRaises(ServiceError):
+            self.service.delete_profile("nope")
+        for i in range(daemon.MAX_PROFILES - 1):
+            self.service.save_profile(f"p{i}")
+        with self.assertRaises(ServiceError):
+            self.service.save_profile("one more")
+        self.service.save_profile("p0")  # overwriting an existing profile is still allowed
 
     def test_hidden_persists(self):
         self.service.set_hidden(NCT_PWM1, True)

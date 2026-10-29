@@ -161,6 +161,12 @@ def print_errors(fans: list[dict], errors: dict[str, str]) -> int:
     return 1 if errors else 0
 
 
+def warn_stop(fan: dict, percent: int) -> None:
+    if fan.get("stop_below") and percent < fan["stop_below"]:
+        print("⚠ " + _("Warning: below {value} the fan stops spinning.", value=fmt_percent(fan["stop_below"])),
+              file=sys.stderr)
+
+
 def cmd_set(args) -> int:
     client = Client()
     fans = client.call("status")["fans"]
@@ -169,10 +175,12 @@ def cmd_set(args) -> int:
         names = {f["id"]: f["name"] for f in fans}
         for fan_id, value in response["applied"].items():
             print(f"{names.get(fan_id, fan_id)}: {fmt_percent(value)}")
+            warn_stop(next(f for f in fans if f["id"] == fan_id), value)
         return print_errors(fans, response["errors"])
     fan = resolve_fan(fans, args.fan)
     response = client.call("set", fan=fan["id"], percent=args.percent)
     print(f"{fan['name']}: {fmt_percent(response['applied'])}")
+    warn_stop(fan, response["applied"])
     return 0
 
 
@@ -212,6 +220,24 @@ def cmd_unhide(args) -> int:
     fan = resolve_fan(client.call("status")["fans"], args.fan)
     client.call("hide", fan=fan["id"], hidden=False)
     print(f"{fan['name']}: {_('shown again')}")
+    return 0
+
+
+def cmd_profile(args) -> int:
+    client = Client()
+    if args.action == "list":
+        names = client.call("status")["profiles"]
+        print("\n".join(names) if names else _("No profile."))
+    elif args.action == "save":
+        client.call("profile_save", name=args.name)
+        print(_("Profile '{name}' saved", name=args.name))
+    elif args.action == "delete":
+        client.call("profile_delete", name=args.name)
+        print(_("Profile '{name}' deleted", name=args.name))
+    else:
+        errors = client.call("profile_apply", name=args.name)["errors"]
+        print(_("Profile '{name}' applied", name=args.name))
+        return print_errors(client.call("status")["fans"], errors)
     return 0
 
 
@@ -266,6 +292,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("fan")
     p.set_defaults(func=cmd_unhide)
 
+    p = sub.add_parser("profile", help=_("manage profiles (saved sets of fan settings)"))
+    p.add_argument("action", choices=("list", "save", "apply", "delete"), help=_("what to do with profiles"))
+    p.add_argument("name", nargs="?", help=_("profile name (10 characters max)"))
+    p.set_defaults(func=cmd_profile)
+
     p = sub.add_parser("detect", help=_("detailed hardware inventory, without the service"))
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_detect)
@@ -276,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("daemon", help=_("run the service (root; see \"fantastic daemon --help\")"))
 
     args = parser.parse_args(argv)
+    if args.command == "profile" and args.action != "list" and not args.name:
+        parser.error(_("a profile name is required"))
     if args.command is None:
         args = parser.parse_args(["list"])
     try:

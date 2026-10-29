@@ -54,13 +54,13 @@ python3 tools/screenshot.py --lang en        # regenerate docs/screenshot.png (o
 
 **Stable identifiers:** `<chip_name>@usb-<port>`, `@pci-<address>` or `@<platform device>`, followed by `/pwmN`, `/fanN` or `/tempN`. NVIDIA: `nvidia@pci-0000:09:00.0/fan0`. The kernel's `hwmonN` numbers are never used, since they change on every boot. Identifiers are keys in `/var/lib/fantastic/state.json`.
 
-**Protocol:** one JSON request per line, e.g. `{"cmd": "status"|"set"|"set_all"|"auto"|"auto_all"|"rename"|"hide"|"unhide_all"|"rescan", "lang": "fr", "fan": ..., "percent": ..., "name": ..., "hidden": true|false}`. Response: `{"ok": true, ...}` or `{"ok": false, "error": "..."}`.
+**Protocol:** one JSON request per line, e.g. `{"cmd": "status"|"set"|"set_all"|"auto"|"auto_all"|"rename"|"hide"|"unhide_all"|"profile_save"|"profile_apply"|"profile_delete"|"rescan", "lang": "fr", "fan": ..., "percent": ..., "name": ..., "hidden": true|false}`. Response: `{"ok": true, ...}` or `{"ok": false, "error": "..."}`.
 - `status` is public. Other commands require the client UID (`SO_PEERCRED`) to be root, in `allowed_users`, or in one of `allowed_groups`.
 - `lang` selects the language of every text in the response (device names, labels, hints, errors). Default: English.
 - `set_all` and `auto_all` return `errors` (id → message) instead of failing as a whole.
 - **Hiding** is display-only; a fan's setting never changes. `set_all` (20% / 100% buttons) skips hidden fans. `auto_all` includes them, for safety. The CLI keeps the full numbering, hidden fans included, so `fantastic set N` stays consistent.
 
-**Persistent state** (`state.json`): `targets` (percent targets), `originals` (original `pwmN_enable`, remembered before switching to manual), `names` (custom names), `hidden` (hidden fan ids).
+**Persistent state** (`state.json`): `targets` (percent targets), `originals` (original `pwmN_enable`, remembered before switching to manual), `names` (custom names), `hidden` (hidden fan ids), `profiles` (name → {fan id: percent, null = automatic}; names 1-10 characters, 8 profiles max; applying skips fans that disappeared; `status` lists the names in `profiles`).
 
 ## Translations
 
@@ -95,6 +95,7 @@ python3 tools/screenshot.py --lang en        # regenerate docs/screenshot.png (o
   - Reading works without privileges. Setting (`nvmlDeviceSetFanSpeed_v2`) requires root.
   - Back to automatic goes through `nvmlDeviceSetDefaultFanSpeed_v2`.
   - The minimum comes from `nvmlDeviceGetMinMaxFanSpeed` (30% on the RTX 3080).
+  - **Calibration** (`nvidia_start_percent`, default 43, measured by the user: the fans only spin from 43%): `to_raw`/`to_logical` in `nvidia.py` remap the slider so logical 5% = 43% NVML and 0-5% = 30-43% (stopped). Fans expose `stop_below` (5) in `status`; GUI and CLI warn below it. The round trip is only exact within 1 point.
   - `Hardware.scan()` retries `nvmlInit` on every scan, in case the driver is not ready at boot.
 - **`asus_ec_sensors`** (chip `asusec`): chipset and VRM fans are **read-only**. The `T_Sensor` probe reports -40 °C when nothing is plugged in, and is hidden.
 

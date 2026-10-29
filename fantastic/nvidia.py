@@ -137,8 +137,33 @@ def _short_bus_id(bus_id: str) -> str:
     return f"{domain[-4:]}:{rest}"
 
 
+# Calibration: NVIDIA cards refuse less than their minimum (30% on a 3080) and their fans
+# only start spinning at some higher duty ("start percent", about 43% measured on a 3080).
+# With a start percent, the user-facing scale is remapped: logical 5% is the lowest speed at
+# which the fans really spin, and logical 0-5% covers the range where they are stopped.
+STOP_BELOW = 5  # logical percent under which the fans are stopped
+
+
+def to_raw(percent: int, low: int, start: int | None) -> int:
+    """Logical percent -> NVML percent."""
+    if start is None:
+        return percent
+    if percent >= STOP_BELOW:
+        return round(start + (percent - STOP_BELOW) * (100 - start) / (100 - STOP_BELOW))
+    return round(low + percent * (start - low) / STOP_BELOW)
+
+
+def to_logical(raw: int, low: int, start: int | None) -> int:
+    """NVML percent -> logical percent (inverse of to_raw)."""
+    if start is None:
+        return raw
+    if raw >= start:
+        return round(STOP_BELOW + (raw - start) * (100 - STOP_BELOW) / (100 - start))
+    return max(0, round((raw - low) * STOP_BELOW / (start - low)))
+
+
 class NvidiaGpu:
-    def __init__(self, nvml: Nvml, index: int):
+    def __init__(self, nvml: Nvml, index: int, start_percent: int | None = None):
         self.nvml = nvml
         self.handle = nvml.handle(index)
         self.name = nvml.name(self.handle)
@@ -156,6 +181,8 @@ class NvidiaGpu:
             self.min_percent, self.max_percent = nvml.fan_speed_range(self.handle)
         except NvmlError:
             self.min_percent, self.max_percent = 0, 100
+        usable = start_percent is not None and self.min_percent < start_percent < 100
+        self.start_percent = start_percent if usable else None
 
     def device_info(self) -> dict:
         details = [f"PCI {self.address}"] if self.address else []
@@ -184,7 +211,12 @@ class NvidiaFan:
         self.id = f"{gpu.id}/{self.channel}"
         self.device_id = gpu.id
         self.label = Msg("Fan {n}", n=index + 1)
-        self.min_percent = gpu.min_percent
+        # With calibration, the whole 0-100% scale is usable (below 5% the fans stop).
+        self.min_percent = 0 if gpu.start_percent else gpu.min_percent
+        self.stop_below = STOP_BELOW if gpu.start_percent else None
+
+    def _raw(self, percent: int) -> int:
+        return to_raw(percent, self.gpu.min_percent, self.gpu.start_percent)
 
     def read(self) -> dict:
         nvml, handle = self.gpu.nvml, self.gpu.handle
@@ -196,13 +228,15 @@ class NvidiaFan:
             mode = "manual" if nvml.fan_policy(handle, self.index) == NVML_FAN_POLICY_MANUAL else "auto"
         except NvmlError:
             mode = "unknown"
-        return {"rpm": rpm, "percent": nvml.fan_speed(handle, self.index), "mode": mode}
+        return {"rpm": rpm, "percent": to_logical(nvml.fan_speed(handle, self.index), self.gpu.min_percent,
+                                        self.gpu.start_percent),
+                "mode": mode}
 
     def control_state(self) -> None:
         return None  # NVML restores automatic mode on its own
 
     def apply(self, percent: int) -> None:
-        self.gpu.nvml.set_fan_speed(self.gpu.handle, self.index, percent)
+        self.gpu.nvml.set_fan_speed(self.gpu.handle, self.index, self._raw(percent))
 
     def is_applied(self, percent: int) -> bool:
         nvml, handle = self.gpu.nvml, self.gpu.handle
@@ -211,7 +245,7 @@ class NvidiaFan:
                 return False
         except NvmlError:
             pass
-        return nvml.target_fan_speed(handle, self.index) == percent
+        return nvml.target_fan_speed(handle, self.index) == self._raw(percent)
 
     def restore(self, original: None) -> None:
         self.gpu.nvml.set_default_fan_speed(self.gpu.handle, self.index)
@@ -234,5 +268,5 @@ class NvidiaTemp:
             return None
 
 
-def scan(nvml: Nvml) -> list[NvidiaGpu]:
-    return [NvidiaGpu(nvml, i) for i in range(nvml.device_count())]
+def scan(nvml: Nvml, start_percent: int | None = None) -> list[NvidiaGpu]:
+    return [NvidiaGpu(nvml, i, start_percent) for i in range(nvml.device_count())]

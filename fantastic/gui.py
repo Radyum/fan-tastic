@@ -34,6 +34,7 @@ SEND_DELAY_MS = 120
 # After a user action, values read back must not overwrite what the user just set.
 USER_GRACE_S = 2.5
 MAX_INLINE_TEMPS = 3
+PROFILE_NAME_MAX = 10
 
 # Layout: device blocks are spread over 1, 2 or 3 columns depending on the width.
 BREAKPOINTS = ((2, 900), (3, 1380))  # (columns, minimum window width in sp)
@@ -131,6 +132,8 @@ class FanRow(Adw.PreferencesRow):
         self.controllable = fan["controllable"]
         self.min_percent = fan.get("min_percent") or 0
         self.name = fan["name"]
+        self.stop_below = fan.get("stop_below")
+        self._last_value = None
         self._updating = False
         self._touched = 0.0
 
@@ -222,6 +225,7 @@ class FanRow(Adw.PreferencesRow):
             return
         target = fan.get("target")
         value = target if target is not None else fan.get("percent")
+        self._last_value = value
         self._updating = True
         try:
             self.switch.set_active(target is None and fan.get("mode") != "manual")
@@ -233,6 +237,9 @@ class FanRow(Adw.PreferencesRow):
 
     def _subtitle(self, fan: dict, failsafe: bool) -> str:
         parts = [fmt_rpm(fan.get("rpm"))]
+        shown = fan.get("target") if fan.get("target") is not None else fan.get("percent")
+        if self.stop_below and shown is not None and shown < self.stop_below:
+            parts.append("⚠ " + _("fan stopped"))
         if not self.controllable:
             parts.append(_("read-only"))
         elif fan.get("target") is not None:
@@ -260,6 +267,10 @@ class FanRow(Adw.PreferencesRow):
             self._updating = False
         self._touched = time.monotonic()
         self.value_label.set_text(fmt_percent(value))
+        if self.stop_below and value < self.stop_below and (self._last_value or 0) >= self.stop_below:
+            self.window.toast("⚠ " + _("Warning: below {value} the fan stops spinning.",
+                                      value=fmt_percent(self.stop_below)))
+        self._last_value = value
         self.window.queue_set(self.fan_id, value)
 
     def _on_switch(self, switch: Gtk.Switch, _pspec) -> None:
@@ -337,13 +348,36 @@ class MainWindow(Adw.ApplicationWindow):
         self.presets = Gtk.Box(sensitive=False)
         self.presets.add_css_class("linked")
         self.preset_buttons = []
-        for percent in (None, 20, 100):  # None: everything back to automatic
+        for percent in (None, 20, 50, 100):  # None: everything back to automatic
             button = Gtk.Button()
             button.connect("clicked", lambda _button, p=percent: self.send_auto_all() if p is None
                            else self.send_all(p))
             self.presets.append(button)
             self.preset_buttons.append((button, percent))
         header.pack_end(self.presets)
+
+        # Profiles: one button per saved profile, then a "+" button to save the current settings.
+        self.profiles = Gtk.Box(sensitive=False)
+        self.profiles.add_css_class("linked")
+        self.profile_names: list[str] = []
+        self.save_entry = Gtk.Entry(max_length=PROFILE_NAME_MAX, width_chars=12)
+        self.save_ok = Gtk.Button()
+        self.save_ok.add_css_class("suggested-action")
+        self.save_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        popover_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6,
+                              margin_start=6, margin_end=6)
+        row = Gtk.Box(spacing=6)
+        row.append(self.save_entry)
+        row.append(self.save_ok)
+        popover_box.append(row)
+        popover_box.append(self.save_list)
+        self.save_button = Gtk.MenuButton(icon_name="list-add-symbolic", popover=Gtk.Popover(child=popover_box))
+        self.save_entry.connect("activate", self._on_save_profile)
+        self.save_ok.connect("clicked", self._on_save_profile)
+        header.pack_end(self.profiles)
+        self.profiles_box = Gtk.Box(spacing=0)
+        self.profiles.append(self.profiles_box)
+        self.profiles.append(self.save_button)
 
         self.banner = Adw.Banner()
         # Hints and messages span the full width, devices go into columns below.
@@ -391,8 +425,55 @@ class MainWindow(Adw.ApplicationWindow):
         self._signature = None  # rebuild every row with the new language
         self._poll()
 
+    def _rebuild_profiles(self, names: list[str]) -> None:
+        self.profile_names = names
+        while (child := self.profiles_box.get_first_child()) is not None:
+            self.profiles_box.remove(child)
+        for name in names:
+            button = Gtk.Button(label=name, tooltip_text=_("Apply profile '{name}'", name=name))
+            button.connect("clicked", lambda _b, n=name: self.send_profile("profile_apply", n))
+            self.profiles_box.append(button)
+        # The popover also lists profiles, with a delete button each.
+        while (child := self.save_list.get_first_child()) is not None:
+            self.save_list.remove(child)
+        for name in names:
+            line = Gtk.Box(spacing=6)
+            label = Gtk.Label(label=name, xalign=0, hexpand=True)
+            delete = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text=_("Delete profile '{name}'", name=name))
+            delete.add_css_class("flat")
+            delete.connect("clicked", lambda _b, n=name: (self.save_button.popdown(),
+                                                          self.send_profile("profile_delete", n)))
+            line.append(label)
+            line.append(delete)
+            self.save_list.append(line)
+
+    def _on_save_profile(self, *_args) -> None:
+        name = self.save_entry.get_text().strip()
+        if name:
+            self.save_button.popdown()
+            self.save_entry.set_text("")
+            self.send_profile("profile_save", name)
+
+    def send_profile(self, cmd: str, name: str) -> None:
+        done_text = {"profile_save": _("Profile '{name}' saved", name=name),
+                     "profile_apply": _("Profile '{name}' applied", name=name),
+                     "profile_delete": _("Profile '{name}' deleted", name=name)}[cmd]
+
+        def done(result, error):
+            if error is None and result.get("errors"):
+                error = next(iter(result["errors"].values()))
+            elif error is None:
+                self.toast(done_text)
+            self._on_command_done(result, error)
+
+        self.worker.submit(lambda: self.backend.call(cmd, name=name), done)
+
     def _apply_texts(self) -> None:
         """Texts of the widgets that live as long as the window."""
+        self.save_button.set_tooltip_text(_("Save the current settings as a profile"))
+        self.save_entry.set_placeholder_text(_("Profile name"))
+        self.save_ok.set_label(_("Save"))
+        self._rebuild_profiles(self.profile_names)
         name, flag = i18n.LANGUAGES[i18n.get_language()]
         self.language_button.set_label(flag)
         self.language_button.set_tooltip_text(_("Language: {name}", name=name))
@@ -519,6 +600,9 @@ class MainWindow(Adw.ApplicationWindow):
         controls = data["source"] == "daemon" and data.get("authorized", False)
         failsafe = data.get("failsafe", False)
         self.presets.set_sensitive(controls)
+        self.profiles.set_sensitive(controls)
+        if data.get("profiles", []) != self.profile_names:
+            self._rebuild_profiles(list(data.get("profiles", [])))
         if data["source"] != "daemon":
             self._show_banner(_("fantasticd service unreachable: read-only display. "
                                 "Start it with \"sudo systemctl start fantasticd\"."))

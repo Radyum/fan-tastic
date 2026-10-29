@@ -25,7 +25,8 @@ On Linux, setting fan speeds often means editing files in `/sys`, running `pwmco
 - 🔍 **Automatic detection** of every fan: motherboard, NVIDIA or AMD graphics card, AIO liquid cooler, USB controllers, laptops.
 - 🏷️ **Clear identification**: device model ("NZXT Kraken X53", "GeForce RTX 3080", "ROG STRIX X570-I motherboard"…), USB/PCI bus and driver label. Every fan can be **renamed**.
 - 🎚️ **A 0-100% slider** per fan, and an **Auto** switch to hand control back to the hardware.
-- ⚡ **Auto / 20% / 100% buttons** to set every fan in one click.
+- ⚡ **Auto / 20% / 50% / 100% buttons** to set every fan in one click.
+- 📑 **Profiles**: save the settings of all fans under a name (10 characters max) and apply them in one click.
 - 🌡️ **Temperatures** shown next to the fans: CPU, GPU, coolant, SSD…
 - 🖥️ **Adaptive layout**: devices spread over one, two or three columns depending on the window width.
 - 🙈 **Hideable fans**: empty headers, tachometer-only cables… One click hides them, one button shows them all again.
@@ -76,8 +77,9 @@ Then open **Fantastic** from the applications menu. That's it.
 |---|---|
 | Move a slider | The fan switches to manual at the chosen speed |
 | Turn **Auto** on | The fan goes back to BIOS, graphics card or firmware control |
-| **Auto / 20% / 100%** (top) | Sets every visible fan at once. **Auto** also includes hidden fans |
+| **Auto / 20% / 50% / 100%** (top) | Sets every visible fan at once. **Auto** also includes hidden fans |
 | ✏️ Pencil | Renames the fan ("CPU radiator", "Front intake"…) |
+| Profile buttons, then **+** (top) | A profile button applies that profile. **+** saves the current settings under a name (an existing name is overwritten) and lists the profiles with a delete button. Up to 8 profiles |
 | Crossed-out eye | Hides the fan, without changing its setting. **Undo** stays available for a few seconds |
 | 👁 *n* (top, when fans are hidden) | Shows every hidden fan again, after confirmation |
 | Flag (top right) | Switches the interface language |
@@ -95,6 +97,8 @@ fantastic set pump 60          # matched by part of the name
 fantastic set all 100          # every visible fan at 100%
 fantastic auto all             # everything back to automatic
 fantastic rename 4 "CPU radiator"
+fantastic profile save Quiet    # save the current settings as a profile
+fantastic profile apply Quiet   # apply it (also: list, delete)
 fantastic hide 7               # hide a fan ("list --all" shows it again)
 fantastic unhide all           # show every hidden fan again
 fantastic detect               # detailed hardware inventory
@@ -116,6 +120,7 @@ Adding a language takes one file: see [Contributing](#contributing).
 - **Thermal failsafe.** Above 90 °C on the CPU or GPU (configurable), manually set fans go to 100%. They return to their target once the temperature drops.
 - **Back to automatic.** When the service stops (shutdown, update, `systemctl stop`), every fan returns to its original mode.
 - **Hardware minimums.** Known limits are enforced automatically: 20% for a Kraken pump, the minimum declared by NVIDIA cards.
+- **Stopped fans.** NVIDIA fans only spin above a threshold (about 43% on an RTX 3080). Fantastic maps it to 5% on the slider, and warns when you go below, since the fans then stop.
 - **Permissions.** Anyone can read the state. Only authorized users (administrators, or users listed in the configuration) can change speeds.
 
 > ⚠️ A fan at 0% stops spinning. Modern processors and graphics cards protect themselves by lowering their frequency, but avoid stopping the CPU fan.
@@ -133,6 +138,7 @@ The configuration file is `/etc/fantastic/config.json`. After a change, reload i
 | `poll_interval` | `2` | Monitoring interval (s) |
 | `rescan_interval` | `15` | Interval between searches for new hardware (s) |
 | `nvidia` | `true` | Use NVML for NVIDIA cards. Changing it requires `systemctl restart` |
+| `nvidia_start_percent` | `43` | Duty (%) at which the NVIDIA fans really start spinning. The slider is calibrated so that **5% is that point**; 0-5% means stopped (a warning is shown). `null` disables the calibration. Measured on an RTX 3080: adjust for your card. Needs `systemctl restart` |
 
 ## How it works
 

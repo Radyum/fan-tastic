@@ -173,4 +173,26 @@ MESSAGES = {
     "See the suggestions and the README.": "Consulte las sugerencias y el README.",
     "Temperatures ({n})": "Temperaturas ({n})",
     "Other temperatures": "Otras temperaturas",
+
+    # --- fan stop warning (GUI and CLI) ---
+    "Warning: below {value} the fan stops spinning.": "Aviso: por debajo del {value} el ventilador se detiene.",
+    "fan stopped": "ventilador parado",
+
+    # --- profiles ---
+    'invalid profile name (1 to {n} characters)': 'nombre de perfil no válido (de 1 a {n} caracteres)',
+    'too many profiles (maximum {n})': 'demasiados perfiles (máximo {n})',
+    'unknown profile: {name}': 'perfil desconocido: {name}',
+    'No profile.': 'Ningún perfil.',
+    "Profile '{name}' saved": 'Perfil «{name}» guardado',
+    "Profile '{name}' deleted": 'Perfil «{name}» eliminado',
+    "Profile '{name}' applied": 'Perfil «{name}» aplicado',
+    'manage profiles (saved sets of fan settings)': 'gestionar perfiles (conjuntos guardados de ajustes de ventiladores)',
+    'what to do with profiles': 'qué hacer con los perfiles',
+    'profile name (10 characters max)': 'nombre del perfil (10 caracteres como máximo)',
+    'a profile name is required': 'se necesita un nombre de perfil',
+    'Save the current settings as a profile': 'Guardar los ajustes actuales como perfil',
+    'Profile name': 'Nombre del perfil',
+    'Save': 'Guardar',
+    "Delete profile '{name}'": 'Eliminar el perfil «{name}»',
+    "Apply profile '{name}'": 'Aplicar el perfil «{name}»',
 }

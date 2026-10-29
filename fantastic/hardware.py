@@ -16,13 +16,14 @@ READ_ERRORS = (OSError, NvmlError)
 
 
 class Hardware:
-    def __init__(self, sysfs_root: str = "/sys", use_nvidia: bool = True):
+    def __init__(self, sysfs_root: str = "/sys", use_nvidia: bool = True, nvidia_start_percent: int | None = 43):
         self.sysfs_root = sysfs_root
         self.devices: dict[str, dict] = {}
         self.fans: dict = {}
         self.temps: dict = {}
         self.hints: list[dict] = []
         self._use_nvidia = use_nvidia
+        self._nvidia_start = nvidia_start_percent
         self._nvml = None
         self._nvml_error = None
         self.scan()
@@ -49,7 +50,7 @@ class Hardware:
                 self._nvml_error = str(exc)
         if self._nvml is not None:
             try:
-                sources.extend(nvidia.scan(self._nvml))
+                sources.extend(nvidia.scan(self._nvml, self._nvidia_start))
             except NvmlError as exc:
                 log.warning("NVML: %s", exc)
 
@@ -92,7 +93,8 @@ class Hardware:
         for fan in self.fans.values():
             entry = {"id": fan.id, "device_id": fan.device_id, "channel": fan.channel,
                      "label": render(fan.label, lang), "controllable": fan.controllable,
-                     "min_percent": fan.min_percent}
+                     "min_percent": fan.min_percent,
+                     "stop_below": getattr(fan, "stop_below", None)}
             try:
                 entry.update(fan.read())
             except READ_ERRORS as exc:

@@ -41,9 +41,15 @@ DEFAULT_CONFIG = {
     "poll_interval": 2,
     "rescan_interval": 15,
     "nvidia": True,
+    # Duty (%) at which the NVIDIA fans really start spinning; the slider is calibrated so
+    # that 5% is that point and 0-5% means "stopped". null disables the calibration.
+    "nvidia_start_percent": 43,
 }
 
-WRITE_COMMANDS = {"set", "set_all", "auto", "auto_all", "rename", "hide", "unhide_all", "rescan"}
+WRITE_COMMANDS = {"set", "set_all", "auto", "auto_all", "rename", "hide", "unhide_all", "rescan",
+                  "profile_save", "profile_apply", "profile_delete"}
+PROFILE_NAME_MAX = 10
+MAX_PROFILES = 8  # keeps the header bar buttons reasonable
 MAX_REQUEST = 64 * 1024
 
 
@@ -115,6 +121,7 @@ class FanService:
         self.originals: dict[str, int] = {}
         self.names: dict[str, str] = {}
         self.hidden: set[str] = set()
+        self.profiles: dict[str, dict[str, int | None]] = {}  # name -> {fan id: percent, None = auto}
         self._load_state()
 
     # --- persistent state --------------------------------------------------
@@ -132,10 +139,12 @@ class FanService:
         self.originals = {k: int(v) for k, v in data.get("originals", {}).items()}
         self.names = {k: str(v) for k, v in data.get("names", {}).items()}
         self.hidden = {str(v) for v in data.get("hidden", [])}
+        self.profiles = {str(name): {str(k): (None if v is None else int(v)) for k, v in fans.items()}
+                         for name, fans in data.get("profiles", {}).items()}
 
     def _save_state(self) -> None:
         data = {"targets": self.targets, "originals": self.originals, "names": self.names,
-                "hidden": sorted(self.hidden)}
+                "hidden": sorted(self.hidden), "profiles": self.profiles}
         tmp = self.state_path + ".tmp"
         try:
             os.makedirs(os.path.dirname(self.state_path) or ".", exist_ok=True)
@@ -165,6 +174,14 @@ class FanService:
             return {"ok": True, "errors": self._render_errors(self.auto_all(), lang)}
         if cmd == "unhide_all":
             return {"ok": True, "count": self.unhide_all()}
+        if cmd == "profile_save":
+            self.save_profile(request.get("name"))
+            return {"ok": True}
+        if cmd == "profile_apply":
+            return {"ok": True, "errors": self._render_errors(self.apply_profile(request.get("name")), lang)}
+        if cmd == "profile_delete":
+            self.delete_profile(request.get("name"))
+            return {"ok": True}
         fan_id = request.get("fan")
         if not isinstance(fan_id, str):
             raise ServiceError(Msg("missing 'fan' parameter"))
@@ -191,7 +208,7 @@ class FanService:
                 fan["hidden"] = fan["id"] in self.hidden
                 if fan["id"] in self.errors:
                     fan["error"] = render(self.errors[fan["id"]], lang)
-            data.update(hints=self.hw.render_hints(lang), failsafe=self.failsafe,
+            data.update(profiles=list(self.profiles), hints=self.hw.render_hints(lang), failsafe=self.failsafe,
                         failsafe_temp=self.config.get("failsafe_temp"), version=__version__)
             return data
 
@@ -262,6 +279,48 @@ class FanService:
                 self.hidden.add(fan_id)
             else:
                 self.hidden.discard(fan_id)
+            self._save_state()
+
+    @staticmethod
+    def _profile_name(name) -> str:
+        name = name.strip() if isinstance(name, str) else ""
+        if not 1 <= len(name) <= PROFILE_NAME_MAX:
+            raise ServiceError(Msg("invalid profile name (1 to {n} characters)", n=PROFILE_NAME_MAX))
+        return name
+
+    def save_profile(self, name) -> None:
+        """Saves the current settings of every controllable fan (None = automatic)."""
+        name = self._profile_name(name)
+        with self.lock:
+            if name not in self.profiles and len(self.profiles) >= MAX_PROFILES:
+                raise ServiceError(Msg("too many profiles (maximum {n})", n=MAX_PROFILES))
+            self.profiles[name] = {fan.id: self.targets.get(fan.id)
+                                   for fan in self.hw.fans.values() if fan.controllable}
+            self._save_state()
+
+    def apply_profile(self, name) -> dict[str, ServiceError]:
+        errors = {}
+        with self.lock:
+            profile = self.profiles.get(name) if isinstance(name, str) else None
+            if profile is None:
+                raise ServiceError(Msg("unknown profile: {name}", name=name))
+            for fan_id, percent in profile.items():
+                if fan_id not in self.hw.fans:
+                    continue  # fan no longer present
+                try:
+                    if percent is None:
+                        self.set_auto(fan_id)
+                    else:
+                        self.set_speed(fan_id, percent)
+                except ServiceError as exc:
+                    errors[fan_id] = exc
+        return errors
+
+    def delete_profile(self, name) -> None:
+        with self.lock:
+            if not isinstance(name, str) or name not in self.profiles:
+                raise ServiceError(Msg("unknown profile: {name}", name=name))
+            del self.profiles[name]
             self._save_state()
 
     def unhide_all(self) -> int:
@@ -420,7 +479,8 @@ def main(argv: list[str] | None = None) -> int:
     if os.geteuid() != 0:
         log.warning("the service is not running as root: setting fan speeds will probably fail")
 
-    hardware = Hardware(sysfs_root=args.sysfs_root, use_nvidia=config["nvidia"] and not args.no_nvidia)
+    hardware = Hardware(sysfs_root=args.sysfs_root, use_nvidia=config["nvidia"] and not args.no_nvidia,
+                        nvidia_start_percent=config["nvidia_start_percent"])
     service = FanService(hardware, config, args.state)
     controllable = sum(1 for fan in hardware.fans.values() if fan.controllable)
     log.info("fantasticd %s: %d fan(s) detected, %d controllable", __version__, len(hardware.fans), controllable)
