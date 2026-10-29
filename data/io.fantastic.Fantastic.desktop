@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Name=Fantastic
+GenericName=Fan Control
+GenericName[de]=Lüftersteuerung
+GenericName[es]=Control de ventiladores
+GenericName[fr]=Contrôle des ventilateurs
+GenericName[it]=Controllo delle ventole
+Comment=Detect your PC fans and set their speed
+Comment[de]=Die Lüfter des PCs erkennen und ihre Drehzahl einstellen
+Comment[es]=Detectar los ventiladores del PC y ajustar su velocidad
+Comment[fr]=Détecter et régler la vitesse des ventilateurs du PC
+Comment[it]=Rilevare le ventole del PC e regolarne la velocità
+Exec=fantastic gui
+Icon=io.fantastic.Fantastic
+Terminal=false
+Categories=System;Monitor;Settings;HardwareSettings;
+Keywords=fan;pwm;cooling;pump;speed;
+Keywords[de]=fan;Lüfter;pwm;Kühlung;Pumpe;Drehzahl;
+Keywords[es]=fan;ventilador;pwm;refrigeración;bomba;velocidad;
+Keywords[fr]=fan;ventilateur;pwm;refroidissement;pompe;vitesse;
+Keywords[it]=fan;ventola;pwm;raffreddamento;pompa;velocità;
+StartupNotify=true

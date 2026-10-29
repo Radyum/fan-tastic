@@ -1,0 +1,21 @@
+[Unit]
+Description=Fantastic - fan control
+Documentation=file:///opt/fantastic/README.md
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/fantastic daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=fantastic
+StateDirectory=fantastic
+# Hardening: /sys and /dev stay reachable (needed to drive the fans).
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

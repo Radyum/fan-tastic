@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Fan frame, with a darker bottom edge for depth -->
+  <rect x="8" y="12" width="112" height="110" rx="26" fill="#1a5fb4"/>
+  <rect x="8" y="8" width="112" height="110" rx="26" fill="#3584e4"/>
+  <!-- Mounting screws -->
+  <g fill="#1c71d8">
+    <circle cx="25" cy="25" r="5.5"/>
+    <circle cx="103" cy="25" r="5.5"/>
+    <circle cx="25" cy="101" r="5.5"/>
+    <circle cx="103" cy="101" r="5.5"/>
+  </g>
+  <!-- Opening -->
+  <circle cx="64" cy="63" r="47" fill="#1c71d8"/>
+  <circle cx="64" cy="63" r="43" fill="#241f31"/>
+  <!-- Blades -->
+  <g transform="translate(64 63)" fill="#f6f5f4">
+    <path id="blade" d="M -3 -10 C -14 -20 -14 -36 -2 -41 C 10 -44 21 -36 22 -27 C 16 -23 8 -16 6 -9 Z"/>
+    <use xlink:href="#blade" transform="rotate(72)"/>
+    <use xlink:href="#blade" transform="rotate(144)"/>
+    <use xlink:href="#blade" transform="rotate(216)"/>
+    <use xlink:href="#blade" transform="rotate(288)"/>
+  </g>
+  <!-- Hub -->
+  <circle cx="64" cy="63" r="13" fill="#3584e4"/>
+  <circle cx="64" cy="63" r="5" fill="#99c1f1"/>
+</svg>
