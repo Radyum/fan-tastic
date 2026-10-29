@@ -74,6 +74,12 @@ class HardwareTest(unittest.TestCase):
         self.assertTrue(fan.is_applied(100))
         self.assertFalse(fan.is_applied(60))
 
+    def test_restore_never_leaves_nuvoton_at_full_speed(self):
+        fan = self.hw.fans[NCT_PWM1]
+        fan.apply(40)
+        fan.restore(0)  # a bogus "original" recorded while the fan was held at 255
+        self.assertEqual(self.fs.read(f"{self.chips['nct']}/pwm1_enable"), "5")
+
     def test_restore_unknown_original_uses_driver_default(self):
         fan = self.hw.fans[NCT_PWM1]
         fan.apply(40)

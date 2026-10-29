@@ -18,9 +18,11 @@ systemctl daemon-reload
 
 rm -rf /opt/fantastic
 rm -f /usr/local/bin/fantastic
-rm -f "/usr/local/share/applications/$APP_ID.desktop"
-rm -f "/usr/local/share/icons/hicolor/scalable/apps/$APP_ID.svg"
-update-desktop-database -q /usr/local/share/applications 2>/dev/null || true
+for share in /usr/share /usr/local/share; do
+    rm -f "$share/applications/$APP_ID.desktop" "$share/icons/hicolor/scalable/apps/$APP_ID.svg"
+done
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -q -f -t /usr/share/icons/hicolor 2>/dev/null || true
 
 if [[ -f /etc/modules-load.d/fantastic.conf ]]; then
     echo "Kept: /etc/modules-load.d/fantastic.conf (driver $(cat /etc/modules-load.d/fantastic.conf) loaded at boot)."

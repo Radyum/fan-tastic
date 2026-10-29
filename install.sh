@@ -7,7 +7,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX=/opt/fantastic
 BIN=/usr/local/bin/fantastic
 UNIT=/etc/systemd/system/fantasticd.service
-SHARE=/usr/local/share
+SHARE=/usr/share
 APP_ID=io.fantastic.Fantastic
 MODULES_CONF=/etc/modules-load.d/fantastic.conf
 
@@ -77,7 +77,10 @@ fi
 step "Desktop launcher"
 install -Dm 644 "$SRC/data/$APP_ID.desktop" "$SHARE/applications/$APP_ID.desktop"
 install -Dm 644 "$SRC/data/$APP_ID.svg" "$SHARE/icons/hicolor/scalable/apps/$APP_ID.svg"
+# Older versions installed under /usr/local/share, which some launchers do not search.
+rm -f "/usr/local/share/applications/$APP_ID.desktop" "/usr/local/share/icons/hicolor/scalable/apps/$APP_ID.svg"
 update-desktop-database -q "$SHARE/applications" 2>/dev/null || true
+gtk-update-icon-cache -q -f -t "$SHARE/icons/hicolor" 2>/dev/null || true
 
 step "Motherboard fan controller driver"
 superio_loaded() { grep -qsE '^(nct6|it8|f71|w83)' /sys/class/hwmon/hwmon*/name; }

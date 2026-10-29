@@ -209,9 +209,11 @@ class HwmonFan:
                 write_value(self.chip.attr(f"temp{self.index}_auto_point{point}_pwm"), percent_to_raw(duty))
             write_value(self._enable, 2)
             return
-        if original is None or original == MANUAL:
-            # Unknown original mode: SmartFan IV (5) on Nuvoton chips, 2 elsewhere.
-            original = 5 if self.chip.name.startswith("nct6") else 2
+        nuvoton = self.chip.name.startswith("nct6")
+        # On Nuvoton chips, 0 ("no control, full speed") is what the driver reports for a fan
+        # held at 255, so it is never a real original mode: use SmartFan IV (5) instead.
+        if original is None or original == MANUAL or (nuvoton and original == 0):
+            original = 5 if nuvoton else 2
         write_value(self._enable, original)
 
 
